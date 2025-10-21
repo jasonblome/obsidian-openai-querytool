@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "obsidian-openai-querytool"
+version = "0.1.0"
+description = ""
+authors = ["Jason Blome <jason.blome@stoneridgeam.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+typer = "^0.17.3"
+rich = "^14.1.0"
+openai = "^1.105.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
