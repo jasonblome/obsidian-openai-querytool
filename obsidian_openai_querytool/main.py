@@ -1,136 +1,26 @@
-from __future__ import annotations
-
 import hashlib
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Generator, Iterable, List, Optional, Tuple, Literal
+from typing import Dict, Iterable, List, Optional, Literal
 from urllib.parse import quote
 
 import typer
 from openai import OpenAI
+from openai.types import VectorStore
 from rich import box
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-app = typer.Typer(help="Index and query Obsidian markdown notes in an OpenAI Vector Store.")
+from obsidian_openai_querytool.models import FileWithAttrs, RemoteIndex, RemoteIndexRow
+from obsidian_openai_querytool.openai import build_remote_index, build_fileid_to_path, get_client, ensure_vector_store, \
+    get_or_create_vector_store
+
+app = typer.Typer(help="AI assistant for Obsidian notes.")
 console = Console()
 
-
-# --------------------------- Data & Types ---------------------------
-
-@dataclass(frozen=True)
-class RemoteFile:
-    """A simplified view of a Vector Store file row."""
-    id: str
-    file_id: str
-    attributes: Dict[str, str]
-    created_at: int
-
-
-@dataclass(frozen=True)
-class RemoteIndexRow:
-    """Row stored in the remote index mapping."""
-    id: str
-    uploaded_ts: int
-    sha256: Optional[str]
-    mtime_attr: Optional[int]
-
-
-RemoteIndex = Dict[str, RemoteIndexRow]
-FileWithAttrs = Tuple[Path, Dict[str, str]]
-
-
-# --------------------------- Client Helpers ---------------------------
-
-def get_client() -> OpenAI:
-    """
-    Create an OpenAI client. Requires OPENAI_API_KEY in the environment.
-    """
-    return OpenAI()
-
-
-def ensure_vector_store(
-    client: OpenAI,
-    vector_store_id: Optional[str],
-    vector_store_name: Optional[str],
-) -> str:
-    """
-    Return an existing Vector Store id or create a new one by name.
-    Priority: explicit id > create (or reuse) by name.
-    """
-    if vector_store_id:
-        return vector_store_id
-
-    if not vector_store_name:
-        raise typer.BadParameter("Provide either --vector-store-id or --vector-store-name.")
-
-    vs = client.vector_stores.create(name=vector_store_name)
-    return vs.id
-
-
-# --------------------------- Vector Store I/O ---------------------------
-
-def iter_vs_files(
-    client: OpenAI, vector_store_id: str, page_size: int = 200
-) -> Generator[RemoteFile, None, None]:
-    """
-    Page through Vector Store files and yield RemoteFile objects.
-    """
-    after: Optional[str] = None
-    while True:
-        page = client.vector_stores.files.list(
-            vector_store_id=vector_store_id,
-            limit=page_size,
-            after=after,
-        )
-        for f in page.data:
-            yield RemoteFile(
-                id=f.id,
-                file_id=getattr(f, "file_id", f.id),
-                attributes=getattr(f, "attributes", {}) or {},
-                created_at=int(getattr(f, "created_at", 0) or 0),
-            )
-
-        if not getattr(page, "has_more", False):
-            break
-        after = page.data[-1].id
-
-
-def build_remote_index(client: OpenAI, vector_store_id: str) -> RemoteIndex:
-    """
-    Returns {obsidian_path: RemoteIndexRow}. `uploaded_ts` is compared to local mtime.
-    """
-    idx: RemoteIndex = {}
-    for f in iter_vs_files(client, vector_store_id):
-        attrs = f.attributes or {}
-        mtime_attr = _safe_int(attrs.get("mtime"))
-        uploaded_ts = mtime_attr or f.created_at
-        path_key = attrs.get("obsidian_path") or f.file_id
-
-        idx[path_key] = RemoteIndexRow(
-            id=f.id,
-            uploaded_ts=uploaded_ts,
-            sha256=attrs.get("sha256"),
-            mtime_attr=mtime_attr,
-        )
-    return idx
-
-
-def build_fileid_to_path(client: OpenAI, vector_store_id: str) -> Dict[str, str]:
-    """Map vector-store file_id -> obsidian_path (if available)."""
-    out: Dict[str, str] = {}
-    for f in iter_vs_files(client, vector_store_id):
-        attrs = f.attributes or {}
-        path = attrs.get("obsidian_path")
-        if path:
-            out[f.file_id] = path
-    return out
-
-
-# --------------------------- Local File Scanning ---------------------------
 
 def file_attrs(p: Path) -> Dict[str, str]:
     """
@@ -260,35 +150,35 @@ def ask_question(client: OpenAI, vector_store_id: str, question: str) -> Answer:
 
 # --------------------------- High-level Workflows ---------------------------
 
-def index_vault(client: OpenAI, vector_store_id: str, vault_root: Path) -> Dict[str, object]:
+def index_vault(client: OpenAI, vector_store: VectorStore, vault_root: Path) -> Dict[str, object]:
     """
     End-to-end index: build index, diff, upload, tag. Returns upload result.
     """
     _validate_vault_root(vault_root)
-    remote_idx = build_remote_index(client, vector_store_id)
+    remote_idx = build_remote_index(client, vector_store.id)
     changed = choose_changed_files(vault_root, remote_idx)
-    result = upload_changed_files(client, vector_store_id, changed)
+    result = upload_changed_files(client, vector_store.id, changed)
     return result
 
 
 # --------------------------- CLI Commands ---------------------------
+
 
 @app.command()
 def index(
     vault_root: Path = typer.Option(
         ..., exists=True, file_okay=False, dir_okay=True, readable=True, help="Path to your Obsidian vault root.",
     ),
-    vector_store_id: Optional[str] = typer.Option(None, help="Existing Vector Store id."),
     vector_store_name: Optional[str] = typer.Option(None, help="Name (create or reuse) for the Vector Store."),
 ) -> None:
     """
     One-shot indexing of the vault into the Vector Store.
     """
     client = get_client()
-    vs_id = ensure_vector_store(client, vector_store_id, vector_store_name)
+    vector_store = get_or_create_vector_store(client, vector_store_name)
 
     console.rule("[bold]Indexing Vault")
-    result = index_vault(client, vs_id, vault_root)
+    result = index_vault(client, vector_store, vault_root)
 
     table = Table(title="Upload Summary", box=box.SIMPLE)
     table.add_column("Uploaded", justify="right")
@@ -323,7 +213,7 @@ def repl(
 
     while True:
         try:
-            raw = Prompt.ask("[cyan]obsidian>[/cyan]").strip()
+            raw = Prompt.ask("[cyan]clara » [/cyan]").strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\nBye!")
             break
