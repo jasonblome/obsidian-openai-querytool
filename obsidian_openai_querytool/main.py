@@ -52,9 +52,9 @@ def choose_changed_files(vault_root: Path, remote_index: RemoteIndex) -> List[Fi
 # --------------------------- Upload / Tag ---------------------------
 
 def upload_changed_files(
-    client: OpenAI,
-    vector_store_id: str,
-    files_with_attrs: Iterable[FileWithAttrs],
+        client: OpenAI,
+        vector_store_id: str,
+        files_with_attrs: Iterable[FileWithAttrs],
 ) -> Dict[str, object]:
     """
     Upload changed files and patch their attributes.
@@ -166,10 +166,22 @@ def index_vault(client: OpenAI, vector_store: VectorStore, vault_root: Path) -> 
 
 @app.command()
 def index(
-    vault_root: Path = typer.Option(
-        ..., exists=True, file_okay=False, dir_okay=True, readable=True, help="Path to your Obsidian vault root.",
-    ),
-    vector_store_name: Optional[str] = typer.Option(None, help="Name (create or reuse) for the Vector Store."),
+        vault_root: Path = typer.Option(
+            "--vault-root",
+            "-v",
+            ...,
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Path to your Obsidian vault root.",
+        ),
+        vector_store_name: Optional[str] = typer.Option(
+            "--vector-store-name",
+            "-n",
+            ...,
+            help="Name (create or reuse) for the Vector Store.",
+        ),
 ) -> None:
     """
     One-shot indexing of the vault into the Vector Store.
@@ -189,15 +201,26 @@ def index(
 
 @app.command()
 def repl(
-    vault_root: Path = typer.Option(
-        ..., exists=True, file_okay=False, dir_okay=True, readable=True, help="Path to your Obsidian vault root.",
-    ),
-    vector_store_id: Optional[str] = typer.Option(None, help="Existing Vector Store id."),
-    vector_store_name: Optional[str] = typer.Option(None, help="Name (create or reuse) for the Vector Store."),
-    link_scheme: Literal["obsidian", "file"] = typer.Option(
-        "obsidian",
-        help="How to render reference links: 'obsidian' (obsidian://open?path=...) or 'file' (file://...).",
-    ),
+        vault_root: Path = typer.Option(
+            "--vault-root",
+            "-v",
+            ...,
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Path to your Obsidian vault root.",
+        ),
+        vector_store_name: Optional[str] = typer.Option(
+            "--vector-store-name",
+            "-n",
+            ...,
+            help="Name (create or reuse) for the Vector Store.",
+        ),
+        link_scheme: Literal["obsidian", "file"] = typer.Option(
+            "obsidian",
+            help="How to render reference links: 'obsidian' (obsidian://open?path=...) or 'file' (file://...).",
+        ),
 ) -> None:
     """
     Start a small REPL to (re)index and ask questions against your Vector Store.
@@ -208,8 +231,8 @@ def repl(
       - help                 : show commands
     """
     client = get_client()
-    vs_id = ensure_vector_store(client, vector_store_id, vector_store_name)
-    console.print(f"[bold green]Vector Store:[/bold green] {vs_id}")
+    vector_store = get_or_create_vector_store(client, vector_store_name)
+    console.print(f"[bold green]Vector Store:[/bold green] {vector_store.id}")
 
     while True:
         try:
@@ -227,7 +250,7 @@ def repl(
             console.print("Commands: index | ask <question> | exit | quit | help")
             continue
         if raw == "index":
-            result = index_vault(client, vs_id, vault_root)
+            result = index_vault(client, vector_store, vault_root)
             console.print(f"Uploaded {result['uploaded']} files.")
             continue
         if raw.startswith("ask "):
@@ -235,7 +258,7 @@ def repl(
             if not question:
                 console.print("[red]Provide a question after 'ask'.[/red]")
                 continue
-            ans = ask_question(client, vs_id, question)
+            ans = ask_question(client, vector_store.id, question)
             console.rule("[bold]Answer")
             console.print(ans.text)
             _print_references(ans.references, link_scheme=link_scheme)
