@@ -1,6 +1,5 @@
 from typing import Optional, Dict, Generator
 
-import typer
 from openai import OpenAI
 from openai.types import VectorStore
 
@@ -58,7 +57,7 @@ def build_remote_index(client: OpenAI, vector_store_id: str) -> RemoteIndex:
     idx: RemoteIndex = {}
     for f in iter_vs_files(client, vector_store_id):
         attrs = f.attributes or {}
-        mtime_attr = _safe_int(attrs.get("mtime"))
+        mtime_attr = attrs.get("mtime")
         uploaded_ts = mtime_attr or f.created_at
         path_key = attrs.get("obsidian_path") or f.file_id
 

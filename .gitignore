@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Poetry virtual environment
+.venv/
+venv/
+env/
+.env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.pytest_cache/
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Local data and cache
+.cache/
+*.log
+
+# Jupyter / Streamlit / temporary outputs
+.ipynb_checkpoints/
+.streamlit/
+
+# Environment variables
+.envrc
+*.env
+
+# VSCode / JetBrains settings
+*.iml

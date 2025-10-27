@@ -15,7 +15,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from obsidian_openai_querytool.models import FileWithAttrs, RemoteIndex, RemoteIndexRow
-from obsidian_openai_querytool.openai import build_remote_index, build_fileid_to_path, get_client, \
+from obsidian_openai_querytool.llm import build_remote_index, build_fileid_to_path, get_client, \
     get_or_create_vector_store
 
 app = typer.Typer(help="AI assistant for Obsidian notes.")
@@ -33,7 +33,6 @@ def file_attrs(p: Path) -> Dict[str, str]:
         "sha256": hashlib.sha256(data).hexdigest(),
         "kind": "obsidian-md",
     }
-
 
 def choose_changed_files(vault_root: Path, remote_index: RemoteIndex) -> List[FileWithAttrs]:
     """
