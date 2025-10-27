@@ -15,7 +15,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from obsidian_openai_querytool.models import FileWithAttrs, RemoteIndex, RemoteIndexRow
-from obsidian_openai_querytool.openai import build_remote_index, build_fileid_to_path, get_client, ensure_vector_store, \
+from obsidian_openai_querytool.openai import build_remote_index, build_fileid_to_path, get_client, \
     get_or_create_vector_store
 
 app = typer.Typer(help="AI assistant for Obsidian notes.")
